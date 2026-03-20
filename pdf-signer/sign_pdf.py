@@ -3,14 +3,19 @@ import sys
 import os
 from pathlib import Path
 
+from datetime import datetime
+
 # Setup constants
 RESOURCE_DIR = os.path.expanduser("~/Dropbox/obsidian-brain/3 RESOURCE/")
 SIGNATURE_FILE = os.path.join(RESOURCE_DIR, "signature-alain.gif")
 BPA_PNG = os.path.join(RESOURCE_DIR, "Bon pour accord_transparent.png")
 NAME_PNG = os.path.join(RESOURCE_DIR, "Alain Chautard_transparent.png")
 
+MONTHS_FR = ["janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août", "septembre", "octobre", "novembre", "décembre"]
+now = datetime.now()
+
 LOCATION = "Languidic"
-DATE_STR = "20 mars 2026"
+DATE_STR = f"{now.day} {MONTHS_FR[now.month - 1]} {now.year}"
 
 def sign_pdf(input_pdf, output_pdf=None):
     if not output_pdf:
@@ -80,7 +85,37 @@ def sign_pdf(input_pdf, output_pdf=None):
             
     if not found_any:
         print("Could not find specific anchors. Placing at the bottom of the last page.")
-        # Fallback layout omitted for brevity...
+        page = doc[-1] # Fallback to the last page
+        rect = page.rect
+        bottom_y = rect.y1 - 150 # Start 150 points from the bottom edge
+        margin_x = 50
+        
+        # Location and Date
+        page.insert_text((margin_x, bottom_y), f"Fait à {LOCATION}, le {DATE_STR}", fontsize=12, fontname="helv", color=(0, 0, 0))
+        
+        curr_y = bottom_y + 10
+        
+        # "Bon pour accord"
+        if has_bpa:
+            bpa_rect = fitz.Rect(margin_x, curr_y, margin_x + 120, curr_y + 30)
+            page.insert_image(bpa_rect, filename=BPA_PNG)
+            curr_y += 35
+        else:
+            page.insert_text((margin_x, curr_y + 15), "Bon pour accord", fontsize=12, fontname="helv", color=(0, 0, 0))
+            curr_y += 20
+            
+        # Signature Image
+        img_rect = fitz.Rect(margin_x, curr_y, margin_x + 150, curr_y + 50)
+        page.insert_image(img_rect, filename=SIGNATURE_FILE)
+
+        # Name Image
+        if has_name:
+            curr_y += 50
+            name_rect = fitz.Rect(margin_x, curr_y, margin_x + 120, curr_y + 30)
+            page.insert_image(name_rect, filename=NAME_PNG)
+        else:
+            curr_y += 65
+            page.insert_text((margin_x, curr_y), "Alain Chautard", fontsize=12, fontname="helv", color=(0, 0, 0))
 
     doc.save(output_pdf)
     print(f"Successfully saved signed PDF to {output_pdf}")
