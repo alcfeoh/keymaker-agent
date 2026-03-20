@@ -21,13 +21,13 @@ This skill provides the ability to automatically sign PDF documents. It utilizes
 To sign a new PDF, you must utilize the `sign_pdf.py` script located in `pdf-signer/sign_pdf.py` (or recreated as needed below). 
 
 ### How the Script Works
-The script first attempts to find specific anchor text on the final page of the PDF to align the signature blocks:
-1. **`NOM DU SIGNATAIRE:`**: The name image (`Alain Chautard_transparent.png`) is placed to the right of this text.
-2. **`FAIT A :`**: The location text ("Languidic") is placed next to this anchor.
-3. **`LE :`**: The current date text (e.g. "20 mars 2026", generated dynamically) is placed next to this anchor.
-4. **Signature Area**: "Bon pour accord_transparent.png" and the main signature GIF are placed vertically below the `FAIT A :` bounds.
+The script first attempts to find native text anchors on the final page (or preceding pages if not found). **If the PDF only consists of scanned images, it will automatically employ OCR (Optical Character Recognition) via Tesseract.** To avoid matching random text, it picks the lowest match on the page.
+1. **Name**: It looks for variations like `NOM DU SIGNATAIRE`, `MENTION MANUSCRITE DU NOM`, or `NOM` and places the name image to the right.
+2. **Location**: It looks for variations like `FAIT À`, `FAIT A`, `À :`, or `A :` and places the location text ("Languidic") next to it.
+3. **Date**: It looks for variations like `DATE :`, `LE :`, `DATE`, or `LE` and places the dynamic current date (e.g., "20 mars 2026") next to it.
+4. **Signature Box**: If a standalone `SIGNATURE` keyword is found without the other anchors, the script will base the entire layout around it.
 
-If these specific anchors are not found, the script employs a **fallback layout**. It will place the location, the dynamic current date, the "Bon pour accord" watermark, the signature image, and the name image sequentially at the bottom-left of the final page. This makes the script capable of signing any arbitrary PDF document.
+If no anchors are identified even after the OCR pass, the script employs a **fallback layout** placing all the elements sequentially at the bottom-left of the final page. This makes the script capable of signing any arbitrary PDF document.
 
 ### Execution
 Activate the python environment and run the script against the target PDF.

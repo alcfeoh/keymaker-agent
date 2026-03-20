@@ -37,51 +37,97 @@ def sign_pdf(input_pdf, output_pdf=None):
     # We will search the last page for specific anchors
     found_any = False
     
-    for page in reversed(doc):
-        inst_nom = page.search_for("NOM DU SIGNATAIRE:")
-        inst_fait = page.search_for("FAIT A :")
-        inst_le = page.search_for("LE :")
-        
-        if inst_nom and inst_fait and inst_le:
-            found_any = True
-            rect_nom = inst_nom[0]
-            rect_fait = inst_fait[0]
-            rect_le = inst_le[-1]
-            
-            # Place Name image to the right of "NOM DU SIGNATAIRE:"
-            if has_name:
-                # Placing safely to the right of the label text.
-                # Assuming label ends roughly around x=160
-                name_rect = fitz.Rect(180, rect_nom.y0 - 10, 300, rect_nom.y0 + 20)
-                page.insert_image(name_rect, filename=NAME_PNG)
-            else:
-                page.insert_text((180, rect_nom.y1), "Alain Chautard", fontsize=12, fontname="helv", color=(0, 0, 0))
+    def find_lowest_rect(page, keywords, tp=None):
+        for kw in keywords:
+            rects = page.search_for(kw, textpage=tp)
+            if rects:
+                # Return the rect closest to the bottom of the page (highest y1)
+                return sorted(rects, key=lambda r: r.y1, reverse=True)[0]
+        return None
 
-            # Place Location next to "FAIT A :"
-            page.insert_text((90, rect_fait.y1), LOCATION, fontsize=12, fontname="helv", color=(0, 0, 0))
+    NOM_KEYWORDS = [
+        "NOM DU SIGNATAIRE :", "NOM DU SIGNATAIRE:", "NOM DU SIGNATAIRE",
+        "MENTION MANUSCRITE DU NOM", "MENTION MANUSCRITE",
+        "NOM ET SIGNATURE", "NOM :", "NOM:", "NOM"
+    ]
+    FAIT_KEYWORDS = [
+        "FAIT A :", "FAIT À :", "FAIT A:", "FAIT À:", "FAIT A", "FAIT À",
+        "À :", "A :", "À:", "A:"
+    ]
+    LE_KEYWORDS = [
+        "DATE :", "DATE:", "DATE",
+        "LE :", "LE:", "LE"
+    ]
+    SIG_KEYWORDS = [
+        "SIGNATURE :", "SIGNATURE:", "SIGNATURE"
+    ]
+    
+    for use_ocr in [False, True]:
+        if found_any: break
+        
+        for page in reversed(doc):
+            tp = None
+            if use_ocr:
+                try:
+                    tp = page.get_textpage_ocr(flags=0, language='eng')
+                except Exception:
+                    continue
+                    
+            rect_nom = find_lowest_rect(page, NOM_KEYWORDS, tp)
+            rect_fait = find_lowest_rect(page, FAIT_KEYWORDS, tp)
+            rect_le = find_lowest_rect(page, LE_KEYWORDS, tp)
+            rect_sig = find_lowest_rect(page, SIG_KEYWORDS, tp)
             
-            # Place Date next to "LE :"
-            # LE is slightly further to the right horizontally than FAIT A
-            page.insert_text((245, rect_le.y1), DATE_STR, fontsize=12, fontname="helv", color=(0, 0, 0))
-            
-            # Place "Bon pour accord" and Signature below the FAIT A zone
-            curr_y = rect_le.y1 + 15
-            
-            # "Bon pour accord"
-            if has_bpa:
-                bpa_rect = fitz.Rect(80, curr_y, 200, curr_y + 30)
-                page.insert_image(bpa_rect, filename=BPA_PNG)
-                curr_y += 35
-            else:
-                page.insert_text((80, curr_y + 15), "Bon pour accord", fontsize=12, fontname="helv", color=(0, 0, 0))
-                curr_y += 20
+            if rect_nom or rect_fait or rect_le or rect_sig:
+                found_any = True
                 
-            # Signature Image
-            img_rect = fitz.Rect(80, curr_y, 230, curr_y + 50)
-            page.insert_image(img_rect, filename=SIGNATURE_FILE)
-            
-            print(f"Signature blocks aligned individually next to relative anchors on page {page.number + 1}")
-            break
+                # Base the layout on the lowest available anchor
+                anchors = [r for r in [rect_nom, rect_fait, rect_le, rect_sig] if r is not None]
+                base_rect = sorted(anchors, key=lambda r: r.y1, reverse=True)[0]
+                
+                # Place Name image to the right of "NOM DU SIGNATAIRE:" if found, else default
+                if rect_nom:
+                    name_x = rect_nom.x1 + 10
+                    name_y = rect_nom.y0 - 10
+                else:
+                    name_x = base_rect.x0 + 100
+                    name_y = base_rect.y1 + 50
+                    
+                if has_name:
+                    name_rect = fitz.Rect(name_x, name_y, name_x + 120, name_y + 30)
+                    page.insert_image(name_rect, filename=NAME_PNG)
+                else:
+                    page.insert_text((name_x, name_y + 15), "Alain Chautard", fontsize=12, fontname="helv", color=(0, 0, 0))
+
+                # Place Location next to "FAIT A :"
+                fait_x = rect_fait.x1 + 10 if rect_fait else base_rect.x0
+                fait_y = rect_fait.y1 if rect_fait else base_rect.y0 - 20
+                page.insert_text((fait_x, fait_y), LOCATION, fontsize=12, fontname="helv", color=(0, 0, 0))
+                
+                # Place Date next to "LE :"
+                le_x = rect_le.x1 + 10 if rect_le else fait_x + 100
+                le_y = rect_le.y1 if rect_le else fait_y
+                page.insert_text((le_x, le_y), DATE_STR, fontsize=12, fontname="helv", color=(0, 0, 0))
+                
+                # Place "Bon pour accord" and Signature below the lowest anchor
+                curr_y = base_rect.y1 + 15
+                sig_x = base_rect.x0
+                
+                # "Bon pour accord"
+                if has_bpa:
+                    bpa_rect = fitz.Rect(sig_x, curr_y, sig_x + 120, curr_y + 30)
+                    page.insert_image(bpa_rect, filename=BPA_PNG)
+                    curr_y += 35
+                else:
+                    page.insert_text((sig_x, curr_y + 15), "Bon pour accord", fontsize=12, fontname="helv", color=(0, 0, 0))
+                    curr_y += 20
+                    
+                # Signature Image
+                img_rect = fitz.Rect(sig_x, curr_y, sig_x + 150, curr_y + 50)
+                page.insert_image(img_rect, filename=SIGNATURE_FILE)
+                
+                print(f"Signature blocks aligned based on anchors (OCR={use_ocr}) on page {page.number + 1}")
+                break
             
     if not found_any:
         print("Could not find specific anchors. Placing at the bottom of the last page.")
